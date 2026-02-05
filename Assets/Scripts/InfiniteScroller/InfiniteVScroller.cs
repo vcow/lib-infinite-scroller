@@ -16,8 +16,7 @@ namespace InfiniteScroller
 
 		private bool _isDragging;
 
-		private Vector2 _startDragPosition;
-		private Vector2 _startDragPointerPosition;
+		private Vector2 _pointerPosition;
 
 		public InfiniteVScroller()
 		{
@@ -51,8 +50,7 @@ namespace InfiniteScroller
 
 		void IInitializePotentialDragHandler.OnInitializePotentialDrag(PointerEventData eventData)
 		{
-			_startDragPosition = _contentContainer.position;
-			_startDragPointerPosition = eventData.position;
+			_pointerPosition = eventData.position;
 			_isDragging = false;
 		}
 
@@ -68,8 +66,16 @@ namespace InfiniteScroller
 				return;
 			}
 
-			var delta = new Vector2(0, eventData.position.y - _startDragPointerPosition.y);
-			_contentContainer.position = _startDragPosition + delta;
+			var offset = (eventData.position - _pointerPosition).y;
+			_pointerPosition = eventData.position;
+
+			if (!CorrectContentOffset(ref offset))
+			{
+				_contentContainer.anchoredPosition = Vector2.zero;
+				return;
+			}
+
+			_contentContainer.position += new Vector3(0f, offset, 0f);
 		}
 
 		void IEndDragHandler.OnEndDrag(PointerEventData eventData)
@@ -80,6 +86,31 @@ namespace InfiniteScroller
 			}
 
 			_isDragging = false;
+		}
+
+		private bool CorrectContentOffset(ref float offset)
+		{
+			var contentBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform.Value, _contentContainer);
+			var scrollRectBounds = new Bounds(_rectTransform.Value.rect.center, _rectTransform.Value.rect.size);
+
+			if (contentBounds.size.y <= scrollRectBounds.size.y)
+			{
+				offset = 0f;
+				return false;
+			}
+
+			if (scrollRectBounds.min.y < contentBounds.min.y + offset)
+			{
+				// уход за нижнюю границу
+				offset = scrollRectBounds.min.y - contentBounds.min.y;
+			}
+			else if (scrollRectBounds.max.y > contentBounds.max.y + offset)
+			{
+				// уход за верхнюю границу
+				offset = scrollRectBounds.max.y - contentBounds.max.y;
+			}
+
+			return true;
 		}
 	}
 }
