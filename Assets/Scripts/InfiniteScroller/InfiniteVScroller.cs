@@ -67,7 +67,7 @@ namespace InfiniteScroller
 			ApplyContent();
 
 			_dataProvider.AddObservable
-				.Subscribe(itemData => { AddItemInBottom(itemData.key, itemData.data); })
+				.Subscribe(AddItemInBottom)
 				.AddTo(_disposables);
 			_dataProvider.RemoveObservable
 				.Subscribe(_ => throw new NotImplementedException())
@@ -92,6 +92,7 @@ namespace InfiniteScroller
 				}
 			}
 
+			_contentContainer.anchoredPosition = Vector2.zero;
 			LayoutRebuilder.ForceRebuildLayoutImmediate(_rectTransform);
 
 			var scrollRectBounds = new Bounds(_rectTransform.rect.center, _rectTransform.rect.size);
@@ -111,8 +112,55 @@ namespace InfiniteScroller
 			}
 		}
 
-		private void AddItemInBottom(int key, object itemData)
+		private void AddItemInBottom((int key, object data) itemData)
 		{
+			InfiniteScrollerItemView itemView;
+			InfiniteScrollerItemView? bottomView = null;
+			foreach (Transform child in _contentContainer)
+			{
+				itemView = child.GetComponent<InfiniteScrollerItemView>();
+				if (bottomView == null ||
+				    itemView.gameObject.activeSelf &&
+				    itemView.rectTransform.anchoredPosition.y < bottomView.rectTransform.anchoredPosition.y)
+				{
+					bottomView = itemView;
+				}
+			}
+
+			if (bottomView == null)
+			{
+				// first item
+				itemView = _itemViewPool.Get();
+				itemView.Initialize(itemData.key, itemData.data);
+				itemView.rectTransform.anchoredPosition = Vector2.zero;
+				_contentContainer.anchoredPosition = Vector2.zero;
+				return;
+			}
+
+			var prevItem = _dataProvider.GetPrevItem(itemData.key);
+			if (!prevItem.HasValue)
+			{
+				Debug.LogError("The sequence of elements in the list is broken.");
+				return;
+			}
+
+			if (prevItem.Value.key != bottomView.Key)
+			{
+				return;
+			}
+
+			itemView = _itemViewPool.Get();
+			itemView.Initialize(itemData.key, itemData.data);
+			LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
+
+			var bottomPosition = bottomView.rectTransform.anchoredPosition.y - itemView.rectTransform.rect.height;
+			itemView.rectTransform.anchoredPosition = new Vector2(0f, bottomPosition);
+			_contentContainer.anchoredPosition = new Vector2(0f, -bottomPosition);
+			_velocity = 0f;
+			_isDragging = false;
+
+			var offset = 0f;
+			UpdateVisibleContentAndCorrectOffset(ref offset);
 		}
 
 		private static void AlignTransform(RectTransform rectTransform)
@@ -286,7 +334,7 @@ namespace InfiniteScroller
 						LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
 
 						itemView.rectTransform.anchoredPosition = new Vector2(0,
-							bottomItem.rectTransform.anchoredPosition.y - itemView.rectTransform.rect.size.y);
+							bottomItem.rectTransform.anchoredPosition.y - itemView.rectTransform.rect.height);
 						var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
 						visibleContentMinY = Mathf.Min(visibleContentMinY, itemViewBounds.min.y);
 					}
@@ -306,7 +354,7 @@ namespace InfiniteScroller
 						LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
 
 						itemView.rectTransform.anchoredPosition = new Vector2(0,
-							topItem.rectTransform.anchoredPosition.y + topItem.rectTransform.rect.size.y);
+							topItem.rectTransform.anchoredPosition.y + topItem.rectTransform.rect.height);
 						var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
 						visibleContentMaxY = Mathf.Max(visibleContentMaxY, itemViewBounds.max.y);
 					}

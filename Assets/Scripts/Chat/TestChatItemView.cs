@@ -10,6 +10,7 @@ namespace Chat
 
 		protected override void DoInitialize(object data)
 		{
+			gameObject.name = Key.ToString();
 			_message?.SetText(data?.ToString() ?? string.Empty);
 		}
 	}
