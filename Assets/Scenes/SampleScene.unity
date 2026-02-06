@@ -171,7 +171,7 @@ MonoBehaviour:
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
   m_ReferenceResolution: {x: 800, y: 600}
-  m_ScreenMatchMode: 2
+  m_ScreenMatchMode: 1
   m_MatchWidthOrHeight: 0
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
@@ -196,7 +196,7 @@ Canvas:
   m_OverridePixelPerfect: 0
   m_SortingBucketNormalizedSize: 0
   m_VertexColorAlwaysGammaSpace: 0
-  m_AdditionalShaderChannelsFlag: 0
+  m_AdditionalShaderChannelsFlag: 25
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
   m_SortingOrder: 0
@@ -686,7 +686,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 50a68d146d6744509c91430f776da4bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  _dataProvider: {fileID: 11400000, guid: 812bae71504964cf0b3ffbba8c72ba9b, type: 2}
+  _itemViewPrefab: {fileID: 2671746731295597114, guid: 771abc5a60c46419c998debbcacad1bb, type: 3}
   _contentContainer: {fileID: 417669075}
+  _inertiaEnabled: 1
+  _decelerationRate: 0.135
 --- !u!1 &2104307811
 GameObject:
   m_ObjectHideFlags: 0
