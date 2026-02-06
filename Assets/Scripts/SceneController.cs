@@ -1,0 +1,15 @@
+using Chat;
+using InfiniteScroller;
+using UnityEngine;
+using VContainer;
+
+[DisallowMultipleComponent]
+public class SceneController : MonoBehaviour
+{
+	[Inject] private readonly IInfiniteScrollerDataProvider _scrollerDataProvider;
+
+	public void AddItem()
+	{
+		((TestChatDataProvider)_scrollerDataProvider).ADD(null);
+	}
+}

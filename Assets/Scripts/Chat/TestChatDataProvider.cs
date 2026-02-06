@@ -39,10 +39,16 @@ namespace Chat
 			var words = phrase.Split(' ');
 			for (var i = 0; i < numMessages; ++i)
 			{
-				var sub = words.AsSpan(0, Random.Range(0, words.Length));
-				var data = string.Join(" ", sub.ToArray());
-				Add(data);
+				ADD(words);
 			}
+		}
+
+		public void ADD(string[] words)
+		{
+			words ??= phrase.Split(' ');
+			var sub = words.AsSpan(0, Random.Range(0, words.Length));
+			var data = string.Join(" ", sub.ToArray());
+			Add(data);
 		}
 
 		public void Dispose()
