@@ -3,7 +3,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using R3;
 using UnityEngine;
 using UnityEngine.Assertions;
@@ -26,15 +25,29 @@ namespace InfiniteScroller
 		[Inject] private readonly IInfiniteScrollerDataProvider _dataProvider = null!;
 
 		private readonly CompositeDisposable _disposables = new();
-		private readonly CancellationTokenSource _cts = new();
+		private readonly Dictionary<int, float> _itemsSizeCache = new();
+		private readonly HashSet<InfiniteScrollerItemView> _visibleViews = new();
 
 		private RectTransform _rectTransform = null!;
 		private ObjectPool<InfiniteScrollerItemView> _itemViewPool = null!;
 		private bool _isDragging;
-		private float _contentVSize;
 
 		private Vector2 _pointerPosition;
 		private float _velocity;
+
+		private (float min, float max) GetVisibleContentBounds() =>
+			_visibleViews.Aggregate((min: float.MaxValue, max: float.MinValue),
+				(acc, view) => (Mathf.Min(acc.min, view.rectTransform.anchoredPosition.y), Mathf.Max(acc.max,
+					view.rectTransform.anchoredPosition.y + GetItemViewSize(view))),
+				acc => acc.min > acc.max ? (0f, 0f) : acc);
+
+		private InfiniteScrollerItemView? GetTopItemView() =>
+			_visibleViews.OrderByDescending(view => view.rectTransform.anchoredPosition.y)
+				.FirstOrDefault();
+
+		private InfiniteScrollerItemView? GetBottomItemView() =>
+			_visibleViews.OrderBy(view => view.rectTransform.anchoredPosition.y)
+				.FirstOrDefault();
 
 		private void OnValidate()
 		{
@@ -54,9 +67,21 @@ namespace InfiniteScroller
 					AlignTransform(item.GetComponent<RectTransform>());
 					return item;
 				},
-				view => view.gameObject.SetActive(true),
-				view => view.gameObject.SetActive(false),
-				view => Destroy(view.gameObject));
+				view =>
+				{
+					_visibleViews.Add(view);
+					view.gameObject.SetActive(true);
+				},
+				view =>
+				{
+					_visibleViews.Remove(view);
+					view.gameObject.SetActive(false);
+				},
+				view =>
+				{
+					_visibleViews.Remove(view);
+					Destroy(view.gameObject);
+				});
 		}
 
 		private void Start()
@@ -76,7 +101,6 @@ namespace InfiniteScroller
 
 		private void OnDestroy()
 		{
-			_cts.Cancel();
 			_disposables.Dispose();
 		}
 
@@ -92,20 +116,21 @@ namespace InfiniteScroller
 				}
 			}
 
+			Assert.IsFalse(_visibleViews.Any());
+			_itemsSizeCache.Clear();
+			var contentSize = 0f;
+
 			_contentContainer.anchoredPosition = Vector2.zero;
 			LayoutRebuilder.ForceRebuildLayoutImmediate(_rectTransform);
 
-			var scrollRectBounds = new Bounds(_rectTransform.rect.center, _rectTransform.rect.size);
-			_contentVSize = 0f;
-
+			var scrollRectHeight = _rectTransform.rect.height;
 			foreach (var (key, data) in _dataProvider.Items.Reverse())
 			{
-				var itemView = _itemViewPool.Get();
-				itemView.Initialize(key, data);
-				LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
-				itemView.rectTransform.anchoredPosition = new Vector2(0, _contentVSize);
-				_contentVSize += itemView.rectTransform.rect.height;
-				if (_contentVSize >= scrollRectBounds.size.y)
+				var itemView = GetAndInitializeItemView(key, data);
+				itemView.rectTransform.anchoredPosition = new Vector2(0f, contentSize);
+				contentSize += GetItemViewSize(itemView);
+
+				if (contentSize >= scrollRectHeight)
 				{
 					break;
 				}
@@ -114,53 +139,38 @@ namespace InfiniteScroller
 
 		private void AddItemInBottom((int key, object data) itemData)
 		{
+			var bottomItemView = GetBottomItemView();
 			InfiniteScrollerItemView itemView;
-			InfiniteScrollerItemView? bottomView = null;
-			foreach (Transform child in _contentContainer)
-			{
-				itemView = child.GetComponent<InfiniteScrollerItemView>();
-				if (bottomView == null ||
-				    itemView.gameObject.activeSelf &&
-				    itemView.rectTransform.anchoredPosition.y < bottomView.rectTransform.anchoredPosition.y)
-				{
-					bottomView = itemView;
-				}
-			}
-
-			if (bottomView == null)
+			if (bottomItemView == null)
 			{
 				// first item
-				itemView = _itemViewPool.Get();
-				itemView.Initialize(itemData.key, itemData.data);
+				itemView = GetAndInitializeItemView(itemData.key, itemData.data);
 				itemView.rectTransform.anchoredPosition = Vector2.zero;
-				_contentContainer.anchoredPosition = Vector2.zero;
 				return;
 			}
 
 			var prevItem = _dataProvider.GetPrevItem(itemData.key);
 			if (!prevItem.HasValue)
 			{
-				Debug.LogError("The sequence of elements in the list is broken.");
+				Debug.LogError("[InfiniteVScroller] The sequence of elements in the list is broken.");
 				return;
 			}
 
-			if (prevItem.Value.key != bottomView.Key)
+			if (prevItem.Value.key != bottomItemView.Key)
 			{
+				// bottom is to fare from visible area
 				return;
 			}
 
-			itemView = _itemViewPool.Get();
-			itemView.Initialize(itemData.key, itemData.data);
-			LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
-
-			var bottomPosition = bottomView.rectTransform.anchoredPosition.y - itemView.rectTransform.rect.height;
+			itemView = GetAndInitializeItemView(itemData.key, itemData.data);
+			var bottomPosition = bottomItemView.rectTransform.anchoredPosition.y - GetItemViewSize(itemView);
 			itemView.rectTransform.anchoredPosition = new Vector2(0f, bottomPosition);
 			_contentContainer.anchoredPosition = new Vector2(0f, -bottomPosition);
+
 			_velocity = 0f;
 			_isDragging = false;
 
-			var offset = 0f;
-			UpdateVisibleContentAndCorrectOffset(ref offset);
+			UpdateVisibleContentAndCorrectOffset(0f);
 		}
 
 		private static void AlignTransform(RectTransform rectTransform)
@@ -185,7 +195,8 @@ namespace InfiniteScroller
 
 		void IBeginDragHandler.OnBeginDrag(PointerEventData eventData)
 		{
-			_isDragging = _rectTransform.rect.height < _contentVSize;
+			var (min, max) = GetVisibleContentBounds();
+			_isDragging = _rectTransform.rect.height < max - min;
 			if (_isDragging)
 			{
 				_velocity = 0f;
@@ -199,21 +210,31 @@ namespace InfiniteScroller
 				return;
 			}
 
-			var offset = (eventData.position - _pointerPosition).y;
+			if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+				    _contentContainer, _pointerPosition, null, out var p1) ||
+			    !RectTransformUtility.ScreenPointToLocalPointInRectangle(
+				    _contentContainer, eventData.position, null, out var p2))
+			{
+				Debug.LogError("[InfiniteVScroller] Failed to get scroll point.");
+				return;
+			}
+
+			var pointsOffset = eventData.position - _pointerPosition;
 			_pointerPosition = eventData.position;
 
-			if (!UpdateVisibleContentAndCorrectOffset(ref offset))
+			var offset = UpdateVisibleContentAndCorrectOffset(p2.y - p1.y);
+			if (Mathf.Approximately(offset, 0f))
 			{
 				_velocity = 0f;
 				return;
 			}
 
-			_contentContainer.position += new Vector3(0f, offset, 0f);
+			_contentContainer.anchoredPosition += new Vector2(0f, offset);
 
 			var unscaledDeltaTime = Time.unscaledDeltaTime;
 			if (unscaledDeltaTime > 0f)
 			{
-				_velocity = offset / unscaledDeltaTime;
+				_velocity = pointsOffset.y / unscaledDeltaTime;
 			}
 			else
 			{
@@ -232,6 +253,20 @@ namespace InfiniteScroller
 			if (!_inertiaEnabled)
 			{
 				_velocity = 0f;
+				return;
+			}
+
+			var pointsOffset = eventData.position - _pointerPosition;
+			_pointerPosition = eventData.position;
+
+			var unscaledDeltaTime = Time.unscaledDeltaTime;
+			if (unscaledDeltaTime > 0f)
+			{
+				_velocity = pointsOffset.y / unscaledDeltaTime;
+			}
+			else
+			{
+				_velocity = 0f;
 			}
 		}
 
@@ -248,20 +283,26 @@ namespace InfiniteScroller
 				return;
 			}
 
-			var offset = _velocity * deltaTime;
-			if (!UpdateVisibleContentAndCorrectOffset(ref offset))
+			var position = _pointerPosition + new Vector2(0f, _velocity * deltaTime);
+			if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+				    _contentContainer, _pointerPosition, null, out var p1) ||
+			    !RectTransformUtility.ScreenPointToLocalPointInRectangle(
+				    _contentContainer, position, null, out var p2))
 			{
-				_velocity = 0f;
+				Debug.LogError("[InfiniteVScroller] Failed to get scroll point.");
 				return;
 			}
 
-			_contentContainer.position += new Vector3(0f, offset, 0f);
+			_pointerPosition = position;
+			var offset = UpdateVisibleContentAndCorrectOffset(p2.y - p1.y);
 
 			if (Mathf.Approximately(offset, 0f))
 			{
 				_velocity = 0f;
 				return;
 			}
+
+			_contentContainer.anchoredPosition += new Vector2(0f, offset);
 
 			_velocity *= Mathf.Pow(_decelerationRate, deltaTime);
 			if (Mathf.Abs(_velocity) < 1f)
@@ -270,122 +311,140 @@ namespace InfiniteScroller
 			}
 		}
 
-		private readonly List<InfiniteScrollerItemView> itemsToRelease = new();
-
-		private bool UpdateVisibleContentAndCorrectOffset(ref float offset)
+		private float UpdateVisibleContentAndCorrectOffset(float offset)
 		{
-			itemsToRelease.Clear();
+			if (!_visibleViews.Any())
+			{
+				return 0f;
+			}
 
-			var visibleContentMinY = float.MaxValue;
-			var visibleContentMaxY = float.MinValue;
+			const float scrollRectMin = 0f;
+			var scrollRectMax = _rectTransform.rect.height;
+			var contentContainerPosition = _contentContainer.anchoredPosition.y;
 
-			InfiniteScrollerItemView? topItem = null;
-			InfiniteScrollerItemView? bottomItem = null;
+			var topItemView = GetTopItemView()!;
+			var bottomItemView = GetBottomItemView()!;
 
-			var correctedOffset = offset;
-			var scrollRectBounds = new Bounds(_rectTransform.rect.center, _rectTransform.rect.size);
+			var contentMax = topItemView.rectTransform.anchoredPosition.y + GetItemViewSize(topItemView);
+			var contentMin = bottomItemView.rectTransform.anchoredPosition.y;
+
+			while (scrollRectMax >= contentContainerPosition + contentMax + offset)
+			{
+				// leaving the upper limit
+				var prevItemData = _dataProvider.GetPrevItem(topItemView.Key);
+				if (prevItemData.HasValue)
+				{
+					var prevItemView = GetAndInitializeItemView(prevItemData.Value.key, prevItemData.Value.data);
+					prevItemView.rectTransform.anchoredPosition = new Vector2(0f, contentMax);
+					topItemView = prevItemView;
+					contentMax += GetItemViewSize(prevItemView);
+				}
+				else
+				{
+					offset = scrollRectMax - contentContainerPosition - contentMax;
+					break;
+				}
+			}
+
+			while (scrollRectMin <= contentContainerPosition + contentMin + offset)
+			{
+				// leaving the lower limit
+				var nextItemData = _dataProvider.GetNextItem(bottomItemView.Key);
+				if (nextItemData.HasValue)
+				{
+					var nextItemView = GetAndInitializeItemView(nextItemData.Value.key, nextItemData.Value.data);
+					bottomItemView = nextItemView;
+					contentMin -= GetItemViewSize(nextItemView);
+					nextItemView.rectTransform.anchoredPosition = new Vector2(0f, contentMin);
+				}
+				else
+				{
+					offset = scrollRectMin - contentContainerPosition - contentMin;
+					break;
+				}
+			}
+
+			float size;
+			while (scrollRectMax < contentContainerPosition + contentMax + offset - (size = GetItemViewSize(topItemView)))
+			{
+				var nextItemData = _dataProvider.GetNextItem(topItemView.Key);
+				if (!nextItemData.HasValue)
+				{
+					break;
+				}
+
+				_itemViewPool.Release(topItemView);
+				contentMax -= size;
+
+				if (!GetVisibleItemView(nextItemData.Value.key, out var nextItemView))
+				{
+					nextItemView = GetAndInitializeItemView(nextItemData.Value.key, nextItemData.Value.data);
+					nextItemView.rectTransform.anchoredPosition = new Vector2(0f, contentMax - GetItemViewSize(nextItemView));
+				}
+
+				topItemView = nextItemView!;
+			}
+
+			while (scrollRectMin > contentContainerPosition + contentMin + offset + (size = GetItemViewSize(bottomItemView)))
+			{
+				var prevItemData = _dataProvider.GetPrevItem(bottomItemView.Key);
+				if (!prevItemData.HasValue)
+				{
+					break;
+				}
+
+				_itemViewPool.Release(bottomItemView);
+				contentMin += size;
+
+				if (!GetVisibleItemView(prevItemData.Value.key, out var prevItemView))
+				{
+					prevItemView = GetAndInitializeItemView(prevItemData.Value.key, prevItemData.Value.data);
+					prevItemView.rectTransform.anchoredPosition = new Vector2(0f, contentMin);
+				}
+
+				bottomItemView = prevItemView!;
+			}
+
+			return offset;
+		}
+
+		private bool GetVisibleItemView(int key, out InfiniteScrollerItemView? itemView)
+		{
 			foreach (Transform child in _contentContainer)
 			{
-				var itemView = child.GetComponent<InfiniteScrollerItemView>();
-				if (itemView == null || !itemView.gameObject.activeSelf)
+				itemView = child.GetComponent<InfiniteScrollerItemView>();
+				if (!itemView || !itemView.gameObject.activeSelf)
 				{
 					continue;
 				}
 
-				var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
-				if (itemViewBounds.max.y + correctedOffset < scrollRectBounds.min.y ||
-				    itemViewBounds.min.y + correctedOffset > scrollRectBounds.max.y)
+				if (itemView.Key == key)
 				{
-					// out of view
-					itemsToRelease.Add(itemView);
-					continue;
-				}
-
-				if (topItem == null || topItem.rectTransform.anchoredPosition.y < itemView.rectTransform.anchoredPosition.y)
-				{
-					topItem = itemView;
-					visibleContentMinY = Mathf.Min(visibleContentMinY, itemViewBounds.min.y);
-					visibleContentMaxY = Mathf.Max(visibleContentMaxY, itemViewBounds.max.y);
-				}
-
-				if (bottomItem == null || bottomItem.rectTransform.anchoredPosition.y > itemView.rectTransform.anchoredPosition.y)
-				{
-					bottomItem = itemView;
-					visibleContentMinY = Mathf.Min(visibleContentMinY, itemViewBounds.min.y);
-					visibleContentMaxY = Mathf.Max(visibleContentMaxY, itemViewBounds.max.y);
+					return true;
 				}
 			}
 
-			if (visibleContentMinY > visibleContentMaxY)
+			itemView = null;
+			return false;
+		}
+
+		private InfiniteScrollerItemView GetAndInitializeItemView(int key, object data)
+		{
+			var itemView = _itemViewPool.Get();
+			itemView.Initialize(key, data);
+			return itemView;
+		}
+
+		private float GetItemViewSize(InfiniteScrollerItemView itemView)
+		{
+			if (!_itemsSizeCache.TryGetValue(itemView.Key, out var size))
 			{
-				// list is empty
-				correctedOffset = 0f;
-			}
-			else
-			{
-				if (scrollRectBounds.min.y < visibleContentMinY + correctedOffset)
-				{
-					// leaving the lower limit
-					var nextItemData = _dataProvider.GetNextItem(bottomItem!.Key);
-					if (nextItemData.HasValue)
-					{
-						var itemView = _itemViewPool.Get();
-						itemView.Initialize(nextItemData.Value.key, nextItemData.Value.data);
-						LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
-
-						itemView.rectTransform.anchoredPosition = new Vector2(0,
-							bottomItem.rectTransform.anchoredPosition.y - itemView.rectTransform.rect.height);
-						var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
-						visibleContentMinY = Mathf.Min(visibleContentMinY, itemViewBounds.min.y);
-					}
-					else
-					{
-						correctedOffset = scrollRectBounds.min.y - visibleContentMinY;
-					}
-				}
-				else if (scrollRectBounds.max.y > visibleContentMaxY + correctedOffset)
-				{
-					// leaving the upper limit
-					var prevItemData = _dataProvider.GetPrevItem(topItem!.Key);
-					if (prevItemData.HasValue)
-					{
-						var itemView = _itemViewPool.Get();
-						itemView.Initialize(prevItemData.Value.key, prevItemData.Value.data);
-						LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
-
-						itemView.rectTransform.anchoredPosition = new Vector2(0,
-							topItem.rectTransform.anchoredPosition.y + topItem.rectTransform.rect.height);
-						var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
-						visibleContentMaxY = Mathf.Max(visibleContentMaxY, itemViewBounds.max.y);
-					}
-					else
-					{
-						correctedOffset = scrollRectBounds.max.y - visibleContentMaxY;
-					}
-				}
+				LayoutRebuilder.ForceRebuildLayoutImmediate(itemView.rectTransform);
+				size = itemView.rectTransform.rect.height;
+				_itemsSizeCache.Add(itemView.Key, size);
 			}
 
-			_contentVSize = Mathf.Max(_contentVSize, visibleContentMaxY - visibleContentMinY);
-
-			var offsetWasCorrected = !Mathf.Approximately(offset, correctedOffset);
-			foreach (var itemView in itemsToRelease)
-			{
-				var outOfScrollRect = true;
-				if (offsetWasCorrected)
-				{
-					var itemViewBounds = RectTransformUtility.CalculateRelativeRectTransformBounds(_rectTransform, itemView.rectTransform);
-					outOfScrollRect &= itemViewBounds.max.y + correctedOffset < scrollRectBounds.min.y ||
-					                   itemViewBounds.min.y + correctedOffset > scrollRectBounds.max.y;
-				}
-
-				if (outOfScrollRect)
-				{
-					_itemViewPool.Release(itemView);
-				}
-			}
-
-			offset = correctedOffset;
-			return true;
+			return size;
 		}
 	}
 }
