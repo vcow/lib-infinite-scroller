@@ -3,7 +3,7 @@ using UnityEngine;
 namespace InfiniteScroller
 {
 	[DisallowMultipleComponent, RequireComponent(typeof(RectTransform))]
-	public abstract class InfiniteScrollerItemView : MonoBehaviour
+	public abstract class InfiniteScrollerItemView<T> : MonoBehaviour
 	{
 		public RectTransform rectTransform { get; private set; }
 
@@ -14,12 +14,12 @@ namespace InfiniteScroller
 			rectTransform = (RectTransform)transform;
 		}
 
-		public void Initialize(int key, object data)
+		public void Initialize(int key, T data)
 		{
 			Key = key;
 			DoInitialize(data);
 		}
 
-		protected abstract void DoInitialize(object data);
+		protected abstract void DoInitialize(T data);
 	}
 }

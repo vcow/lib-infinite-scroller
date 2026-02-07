@@ -3,14 +3,14 @@ using R3;
 
 namespace InfiniteScroller
 {
-	public interface IInfiniteScrollerDataProvider
+	public interface IInfiniteScrollerDataProvider<T>
 	{
-		IEnumerable<(int key, object data)> Items { get; }
-		Observable<(int key, object data)> AddObservable { get; }
+		IEnumerable<(int key, T data)> Items { get; }
+		Observable<(int key, T data)> AddObservable { get; }
 		Observable<int> RemoveObservable { get; }
-		int Add(object data);
+		int Add(T data);
 		bool Remove(int key);
-		(int key, object data)? GetPrevItem(int key);
-		(int key, object data)? GetNextItem(int key);
+		(int key, T data)? GetPrevItem(int key);
+		(int key, T data)? GetNextItem(int key);
 	}
 }

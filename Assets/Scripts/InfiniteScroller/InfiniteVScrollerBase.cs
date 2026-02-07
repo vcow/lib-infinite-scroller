@@ -14,22 +14,22 @@ using VContainer;
 namespace InfiniteScroller
 {
 	[DisallowMultipleComponent, RequireComponent(typeof(RectTransform), typeof(RawImage))]
-	public sealed class InfiniteVScroller : MonoBehaviour, IInitializePotentialDragHandler,
+	public abstract class InfiniteVScrollerBase<T> : MonoBehaviour, IInitializePotentialDragHandler,
 		IBeginDragHandler, IDragHandler, IEndDragHandler
 	{
-		[SerializeField] private InfiniteScrollerItemView _itemViewPrefab = null!;
+		[SerializeField] private InfiniteScrollerItemView<T> _itemViewPrefab = null!;
 		[SerializeField, Space] private RectTransform _contentContainer = null!;
 		[SerializeField] private bool _inertiaEnabled = true;
 		[SerializeField, Range(0.001f, 1f)] private float _decelerationRate = 0.135f;
 
-		[Inject] private readonly IInfiniteScrollerDataProvider _dataProvider = null!;
+		[Inject] private readonly IInfiniteScrollerDataProvider<T> _dataProvider = null!;
 
 		private readonly CompositeDisposable _disposables = new();
 		private readonly Dictionary<int, float> _itemsSizeCache = new();
-		private readonly HashSet<InfiniteScrollerItemView> _visibleViews = new();
+		private readonly HashSet<InfiniteScrollerItemView<T>> _visibleViews = new();
 
 		private RectTransform _rectTransform = null!;
-		private ObjectPool<InfiniteScrollerItemView> _itemViewPool = null!;
+		private ObjectPool<InfiniteScrollerItemView<T>> _itemViewPool = null!;
 		private bool _isDragging;
 
 		private Vector2 _pointerPosition;
@@ -41,11 +41,11 @@ namespace InfiniteScroller
 					view.rectTransform.anchoredPosition.y + GetItemViewSize(view))),
 				acc => acc.min > acc.max ? (0f, 0f) : acc);
 
-		private InfiniteScrollerItemView? GetTopItemView() =>
+		private InfiniteScrollerItemView<T>? GetTopItemView() =>
 			_visibleViews.OrderByDescending(view => view.rectTransform.anchoredPosition.y)
 				.FirstOrDefault();
 
-		private InfiniteScrollerItemView? GetBottomItemView() =>
+		private InfiniteScrollerItemView<T>? GetBottomItemView() =>
 			_visibleViews.OrderBy(view => view.rectTransform.anchoredPosition.y)
 				.FirstOrDefault();
 
@@ -60,7 +60,7 @@ namespace InfiniteScroller
 			_rectTransform = (RectTransform)transform;
 
 			_disposables.Add(_itemViewPool);
-			_itemViewPool = new ObjectPool<InfiniteScrollerItemView>(
+			_itemViewPool = new ObjectPool<InfiniteScrollerItemView<T>>(
 				() =>
 				{
 					var item = Instantiate(_itemViewPrefab, _contentContainer);
@@ -109,7 +109,7 @@ namespace InfiniteScroller
 			Assert.IsNotNull(_contentContainer);
 			foreach (Transform child in _contentContainer)
 			{
-				var itemView = child.GetComponent<InfiniteScrollerItemView>();
+				var itemView = child.GetComponent<InfiniteScrollerItemView<T>>();
 				if (itemView != null)
 				{
 					_itemViewPool.Release(itemView);
@@ -137,10 +137,10 @@ namespace InfiniteScroller
 			}
 		}
 
-		private void AddItemInBottom((int key, object data) itemData)
+		private void AddItemInBottom((int key, T data) itemData)
 		{
 			var bottomItemView = GetBottomItemView();
-			InfiniteScrollerItemView itemView;
+			InfiniteScrollerItemView<T> itemView;
 			if (bottomItemView == null)
 			{
 				// first item
@@ -408,11 +408,11 @@ namespace InfiniteScroller
 			return offset;
 		}
 
-		private bool GetVisibleItemView(int key, out InfiniteScrollerItemView? itemView)
+		private bool GetVisibleItemView(int key, out InfiniteScrollerItemView<T>? itemView)
 		{
 			foreach (Transform child in _contentContainer)
 			{
-				itemView = child.GetComponent<InfiniteScrollerItemView>();
+				itemView = child.GetComponent<InfiniteScrollerItemView<T>>();
 				if (!itemView || !itemView.gameObject.activeSelf)
 				{
 					continue;
@@ -428,14 +428,14 @@ namespace InfiniteScroller
 			return false;
 		}
 
-		private InfiniteScrollerItemView GetAndInitializeItemView(int key, object data)
+		private InfiniteScrollerItemView<T> GetAndInitializeItemView(int key, T data)
 		{
 			var itemView = _itemViewPool.Get();
 			itemView.Initialize(key, data);
 			return itemView;
 		}
 
-		private float GetItemViewSize(InfiniteScrollerItemView itemView)
+		private float GetItemViewSize(InfiniteScrollerItemView<T> itemView)
 		{
 			if (!_itemsSizeCache.TryGetValue(itemView.Key, out var size))
 			{

@@ -1,41 +1,16 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using InfiniteScroller;
-using R3;
 using Random = UnityEngine.Random;
 
 namespace Chat
 {
-	public class TestChatDataProvider : IInfiniteScrollerDataProvider, IDisposable
+	public class TestChatDataProvider : ChatDataProviderBase<string>, IDisposable
 	{
-		private struct ItemData
-		{
-			public int Index;
-			public object Data;
-		}
-
 		private const string phrase = "И он бросил на палубу целую пригоршню замерзших слов, похожих на драже, переливающихся разными цветами. Здесь были красные, зеленые, лазуревые и золотые. В наших руках они согревались и таяли, как снег, и тогда мы их действительно слышали, но не понимали, так как это был какой-то варварский язык...";
 		private const int numMessages = 100;
 
-		private readonly CompositeDisposable _disposables = new();
-		private readonly Subject<(int key, object data)> _addObservable;
-		private readonly Subject<int> _removeObservable;
-
-		private readonly Dictionary<int, LinkedListNode<ItemData>> _nodeDictionary = new();
-		private readonly LinkedList<ItemData> _items = new();
-
-		private int _nextIndex;
-
-		public IEnumerable<(int key, object data)> Items => _items.Select(i => (i.Index, i.Data));
-		public Observable<(int key, object data)> AddObservable => _addObservable;
-		public Observable<int> RemoveObservable => _removeObservable;
-
 		public TestChatDataProvider()
 		{
-			_addObservable = new Subject<(int key, object data)>().AddTo(_disposables);
-			_removeObservable = new Subject<int>().AddTo(_disposables);
-
 			var words = phrase.Split(' ');
 			for (var i = 0; i < numMessages; ++i)
 			{
@@ -49,56 +24,6 @@ namespace Chat
 			var sub = words.AsSpan(0, Random.Range(0, words.Length));
 			var data = string.Join(" ", sub.ToArray());
 			Add(data);
-		}
-
-		public void Dispose()
-		{
-			_nodeDictionary.Clear();
-			_items.Clear();
-			_disposables.Dispose();
-		}
-
-		public int Add(object data)
-		{
-			var index = _nextIndex++;
-			var node = _items.AddLast(new ItemData { Index = index, Data = data });
-			_nodeDictionary.Add(index, node);
-			_addObservable.OnNext((index, data));
-			return index;
-		}
-
-		public bool Remove(int key)
-		{
-			if (!_nodeDictionary.TryGetValue(key, out var node))
-			{
-				return false;
-			}
-
-			_items.Remove(node);
-			_removeObservable.OnNext(key);
-			return true;
-		}
-
-		public (int key, object data)? GetPrevItem(int key)
-		{
-			if (!_nodeDictionary.TryGetValue(key, out var node))
-			{
-				return null;
-			}
-
-			var prev = node.Previous;
-			return prev != null ? (prev.Value.Index, prev.Value.Data) : null;
-		}
-
-		public (int key, object data)? GetNextItem(int key)
-		{
-			if (!_nodeDictionary.TryGetValue(key, out var node))
-			{
-				return null;
-			}
-
-			var next = node.Next;
-			return next != null ? (next.Value.Index, next.Value.Data) : null;
 		}
 	}
 }

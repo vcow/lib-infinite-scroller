@@ -4,14 +4,14 @@ using UnityEngine;
 
 namespace Chat
 {
-	public class TestChatItemView : InfiniteScrollerItemView
+	public class TestChatItemView : InfiniteScrollerItemView<string>
 	{
 		[SerializeField] private TextMeshProUGUI _message;
 
-		protected override void DoInitialize(object data)
+		protected override void DoInitialize(string data)
 		{
 			gameObject.name = Key.ToString();
-			_message?.SetText(data?.ToString() ?? string.Empty);
+			_message?.SetText(data ?? string.Empty);
 		}
 	}
 }

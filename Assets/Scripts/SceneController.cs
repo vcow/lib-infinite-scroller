@@ -6,7 +6,7 @@ using VContainer;
 [DisallowMultipleComponent]
 public class SceneController : MonoBehaviour
 {
-	[Inject] private readonly IInfiniteScrollerDataProvider _scrollerDataProvider;
+	[Inject] private readonly IInfiniteScrollerDataProvider<string> _scrollerDataProvider;
 
 	public void AddItem()
 	{

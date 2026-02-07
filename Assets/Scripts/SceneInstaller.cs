@@ -7,6 +7,6 @@ public class SceneInstaller : LifetimeScope
 {
 	protected override void Configure(IContainerBuilder builder)
 	{
-		builder.Register<TestChatDataProvider>(Lifetime.Singleton).As<IInfiniteScrollerDataProvider>();
+		builder.Register<TestChatDataProvider>(Lifetime.Singleton).As<IInfiniteScrollerDataProvider<string>>();
 	}
 }
