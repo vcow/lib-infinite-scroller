@@ -60,7 +60,6 @@ namespace Plugins.vcow.InfiniteScroller
 		{
 			_rectTransform = (RectTransform)transform;
 
-			_disposables.Add(_itemViewPool);
 			_itemViewPool = new ObjectPool<InfiniteScrollerItemView<T>>(
 				() =>
 				{
@@ -82,7 +81,8 @@ namespace Plugins.vcow.InfiniteScroller
 				{
 					_visibleViews.Remove(view);
 					Destroy(view.gameObject);
-				});
+				})
+				.AddTo(_disposables);
 		}
 
 		private void Start()
