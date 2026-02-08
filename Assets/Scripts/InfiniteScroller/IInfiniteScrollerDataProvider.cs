@@ -1,3 +1,5 @@
+#nullable enable
+
 using System.Collections.Generic;
 using R3;
 
@@ -12,5 +14,7 @@ namespace InfiniteScroller
 		bool Remove(int key);
 		(int key, T data)? GetPrevItem(int key);
 		(int key, T data)? GetNextItem(int key);
+		(int key, T data)? GetFirstItem();
+		(int key, T data)? GetLastItem();
 	}
 }

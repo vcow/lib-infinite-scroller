@@ -124,9 +124,10 @@ namespace InfiniteScroller
 			LayoutRebuilder.ForceRebuildLayoutImmediate(_rectTransform);
 
 			var scrollRectHeight = _rectTransform.rect.height;
-			foreach (var (key, data) in _dataProvider.Items.Reverse())
+			var item = _dataProvider.GetLastItem();
+			while (item.HasValue)
 			{
-				var itemView = GetAndInitializeItemView(key, data);
+				var itemView = GetAndInitializeItemView(item.Value.key, item.Value.data);
 				itemView.rectTransform.anchoredPosition = new Vector2(0f, contentSize);
 				contentSize += GetItemViewSize(itemView);
 
@@ -134,6 +135,8 @@ namespace InfiniteScroller
 				{
 					break;
 				}
+
+				item = _dataProvider.GetPrevItem(item.Value.key);
 			}
 		}
 

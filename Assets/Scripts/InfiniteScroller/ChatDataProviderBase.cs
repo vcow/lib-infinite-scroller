@@ -81,5 +81,17 @@ namespace InfiniteScroller
 			var next = node.Next;
 			return next != null ? (next.Value.Index, next.Value.Data) : null;
 		}
+
+		public (int key, T data)? GetFirstItem()
+		{
+			var first = _items.First;
+			return first != null ? (first.Value.Index, first.Value.Data) : null;
+		}
+
+		public (int key, T data)? GetLastItem()
+		{
+			var last = _items.Last;
+			return last != null ? (last.Value.Index, last.Value.Data) : null;
+		}
 	}
 }
