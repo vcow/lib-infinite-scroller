@@ -36,19 +36,31 @@ namespace Plugins.vcow.InfiniteScroller
 		private Vector2 _pointerPosition;
 		private float _velocity;
 
-		private (float min, float max) GetVisibleContentBounds() =>
-			_visibleViews.Aggregate((min: float.MaxValue, max: float.MinValue),
-				(acc, view) => (Mathf.Min(acc.min, view.rectTransform.anchoredPosition.y), Mathf.Max(acc.max,
-					view.rectTransform.anchoredPosition.y + GetItemViewSize(view))),
-				acc => acc.min > acc.max ? (0f, 0f) : acc);
+		private (float max, float min, InfiniteScrollerItemView<T>? top, InfiniteScrollerItemView<T>? bottom)
+			GetVisibleContentBounds()
+		{
+			InfiniteScrollerItemView<T>? top = null;
+			InfiniteScrollerItemView<T>? bottom = null;
+			foreach (var view in _visibleViews)
+			{
+				if (top == null ||
+				    top.rectTransform.anchoredPosition.y < view.rectTransform.anchoredPosition.y)
+				{
+					top = view;
+				}
 
-		private InfiniteScrollerItemView<T>? GetTopItemView() =>
-			_visibleViews.OrderByDescending(view => view.rectTransform.anchoredPosition.y)
-				.FirstOrDefault();
+				if (bottom == null ||
+				    bottom.rectTransform.anchoredPosition.y > view.rectTransform.anchoredPosition.y)
+				{
+					bottom = view;
+				}
+			}
 
-		private InfiniteScrollerItemView<T>? GetBottomItemView() =>
-			_visibleViews.OrderBy(view => view.rectTransform.anchoredPosition.y)
-				.FirstOrDefault();
+			var max = top == null ? 0f : top.rectTransform.anchoredPosition.y + GetItemViewSize(top);
+			var min = bottom == null ? 0f : bottom.rectTransform.anchoredPosition.y;
+
+			return (max, min, top, bottom);
+		}
 
 		private void OnValidate()
 		{
@@ -61,27 +73,27 @@ namespace Plugins.vcow.InfiniteScroller
 			_rectTransform = (RectTransform)transform;
 
 			_itemViewPool = new ObjectPool<InfiniteScrollerItemView<T>>(
-				() =>
-				{
-					var item = Instantiate(_itemViewPrefab, _contentContainer);
-					AlignTransform(item.GetComponent<RectTransform>());
-					return item;
-				},
-				view =>
-				{
-					_visibleViews.Add(view);
-					view.gameObject.SetActive(true);
-				},
-				view =>
-				{
-					_visibleViews.Remove(view);
-					view.gameObject.SetActive(false);
-				},
-				view =>
-				{
-					_visibleViews.Remove(view);
-					Destroy(view.gameObject);
-				})
+					() =>
+					{
+						var item = Instantiate(_itemViewPrefab, _contentContainer);
+						AlignTransform(item.GetComponent<RectTransform>());
+						return item;
+					},
+					view =>
+					{
+						_visibleViews.Add(view);
+						view.gameObject.SetActive(true);
+					},
+					view =>
+					{
+						_visibleViews.Remove(view);
+						view.gameObject.SetActive(false);
+					},
+					view =>
+					{
+						_visibleViews.Remove(view);
+						Destroy(view.gameObject);
+					})
 				.AddTo(_disposables);
 		}
 
@@ -145,7 +157,7 @@ namespace Plugins.vcow.InfiniteScroller
 
 		private void AddItemInBottom((int key, T data) itemData)
 		{
-			var bottomItemView = GetBottomItemView();
+			var (_, _, _, bottomItemView) = GetVisibleContentBounds();
 			InfiniteScrollerItemView<T> itemView;
 			if (bottomItemView == null)
 			{
@@ -201,7 +213,7 @@ namespace Plugins.vcow.InfiniteScroller
 
 		void IBeginDragHandler.OnBeginDrag(PointerEventData eventData)
 		{
-			var (min, max) = GetVisibleContentBounds();
+			var (max, min, _, _) = GetVisibleContentBounds();
 			_isDragging = _rectTransform.rect.height < max - min;
 			if (_isDragging)
 			{
@@ -339,16 +351,12 @@ namespace Plugins.vcow.InfiniteScroller
 			var scrollRectMax = _rectTransform.rect.height;
 			var contentContainerPosition = _contentContainer.anchoredPosition.y;
 
-			var topItemView = GetTopItemView()!;
-			var bottomItemView = GetBottomItemView()!;
-
-			var contentMax = topItemView.rectTransform.anchoredPosition.y + GetItemViewSize(topItemView);
-			var contentMin = bottomItemView.rectTransform.anchoredPosition.y;
+			var (contentMax, contentMin, topItemView, bottomItemView) = GetVisibleContentBounds();
 
 			while (scrollRectMax >= contentContainerPosition + contentMax + offset)
 			{
 				// leaving the upper limit
-				var prevItemData = _dataProvider.GetPrevItem(topItemView.Key);
+				var prevItemData = _dataProvider.GetPrevItem(topItemView!.Key);
 				if (prevItemData.HasValue)
 				{
 					var prevItemView = GetAndInitializeItemView(prevItemData.Value.key, prevItemData.Value.data);
@@ -366,7 +374,7 @@ namespace Plugins.vcow.InfiniteScroller
 			while (scrollRectMin <= contentContainerPosition + contentMin + offset)
 			{
 				// leaving the lower limit
-				var nextItemData = _dataProvider.GetNextItem(bottomItemView.Key);
+				var nextItemData = _dataProvider.GetNextItem(bottomItemView!.Key);
 				if (nextItemData.HasValue)
 				{
 					var nextItemView = GetAndInitializeItemView(nextItemData.Value.key, nextItemData.Value.data);
@@ -382,9 +390,9 @@ namespace Plugins.vcow.InfiniteScroller
 			}
 
 			float size;
-			while (scrollRectMax < contentContainerPosition + contentMax + offset - (size = GetItemViewSize(topItemView)))
+			while (scrollRectMax < contentContainerPosition + contentMax + offset - (size = GetItemViewSize(topItemView!)))
 			{
-				var nextItemData = _dataProvider.GetNextItem(topItemView.Key);
+				var nextItemData = _dataProvider.GetNextItem(topItemView!.Key);
 				if (!nextItemData.HasValue)
 				{
 					break;
@@ -402,9 +410,9 @@ namespace Plugins.vcow.InfiniteScroller
 				topItemView = nextItemView!;
 			}
 
-			while (scrollRectMin > contentContainerPosition + contentMin + offset + (size = GetItemViewSize(bottomItemView)))
+			while (scrollRectMin > contentContainerPosition + contentMin + offset + (size = GetItemViewSize(bottomItemView!)))
 			{
-				var prevItemData = _dataProvider.GetPrevItem(bottomItemView.Key);
+				var prevItemData = _dataProvider.GetPrevItem(bottomItemView!.Key);
 				if (!prevItemData.HasValue)
 				{
 					break;
