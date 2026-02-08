@@ -1,0 +1,12 @@
+{
+  "name": "com.vcow.infinite-scroller",
+  "version": "1.0.0",
+  "displayName": "Infinite scroller for unlimited list of items.",
+  "description": "Simple scroller for chats and the like, which may have an unlimited number of elements with an unknown size in advance.",
+  "unity": "2019.4",
+  "dependencies": {},
+  "author": {
+    "name": "vcow",
+    "email": "virtualcow@gmail.com"
+  }
+}
