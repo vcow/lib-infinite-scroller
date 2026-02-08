@@ -3,7 +3,7 @@
 using System.Collections.Generic;
 using R3;
 
-namespace InfiniteScroller
+namespace Plugins.vcow.InfiniteScroller
 {
 	public interface IInfiniteScrollerDataProvider<T>
 	{

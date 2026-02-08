@@ -1,5 +1,5 @@
 using Chat;
-using InfiniteScroller;
+using Plugins.vcow.InfiniteScroller;
 using UnityEngine;
 using VContainer;
 

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using R3;
 
-namespace InfiniteScroller
+namespace Plugins.vcow.InfiniteScroller
 {
 	public abstract class ChatDataProviderBase<T> : IInfiniteScrollerDataProvider<T>, IDisposable
 	{

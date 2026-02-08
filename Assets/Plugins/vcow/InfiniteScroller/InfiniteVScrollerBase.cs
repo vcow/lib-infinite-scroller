@@ -11,7 +11,7 @@ using UnityEngine.Pool;
 using UnityEngine.UI;
 using VContainer;
 
-namespace InfiniteScroller
+namespace Plugins.vcow.InfiniteScroller
 {
 	[DisallowMultipleComponent, RequireComponent(typeof(RectTransform), typeof(RawImage))]
 	public abstract class InfiniteVScrollerBase<T> : MonoBehaviour, IInitializePotentialDragHandler,
@@ -30,6 +30,7 @@ namespace InfiniteScroller
 
 		private RectTransform _rectTransform = null!;
 		private ObjectPool<InfiniteScrollerItemView<T>> _itemViewPool = null!;
+		private float _lastScrollerSize;
 		private bool _isDragging;
 
 		private Vector2 _pointerPosition;
@@ -97,6 +98,8 @@ namespace InfiniteScroller
 			_dataProvider.RemoveObservable
 				.Subscribe(_ => throw new NotImplementedException())
 				.AddTo(_disposables);
+
+			_lastScrollerSize = _rectTransform.rect.height;
 		}
 
 		private void OnDestroy()
@@ -275,6 +278,17 @@ namespace InfiniteScroller
 
 		private void Update()
 		{
+			var scrollerSize = _rectTransform.rect.height;
+			if (!Mathf.Approximately(scrollerSize, _lastScrollerSize))
+			{
+				if (scrollerSize > _lastScrollerSize)
+				{
+					UpdateVisibleContentAndCorrectOffset(0f);
+				}
+
+				_lastScrollerSize = scrollerSize;
+			}
+
 			if (_isDragging || !_inertiaEnabled || Mathf.Approximately(_velocity, 0f))
 			{
 				return;

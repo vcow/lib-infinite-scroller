@@ -1,4 +1,4 @@
-using InfiniteScroller;
+using Plugins.vcow.InfiniteScroller;
 using TMPro;
 using UnityEngine;
 

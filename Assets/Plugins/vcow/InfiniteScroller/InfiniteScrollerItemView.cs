@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace InfiniteScroller
+namespace Plugins.vcow.InfiniteScroller
 {
 	[DisallowMultipleComponent, RequireComponent(typeof(RectTransform))]
 	public abstract class InfiniteScrollerItemView<T> : MonoBehaviour

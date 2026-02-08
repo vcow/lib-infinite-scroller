@@ -1,5 +1,5 @@
 using System;
-using InfiniteScroller;
+using Plugins.vcow.InfiniteScroller;
 using Random = UnityEngine.Random;
 
 namespace Chat
